@@ -1,0 +1,610 @@
+---
+title: "Troy et al.: Data Analysis"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  html_notebook: default
+  word_document: default
+---
+
+### Load data and packages
+
+```{r libraries, message = FALSE,warning=FALSE, include=FALSE}
+#For our analyses, we need several R packages.
+#The following function installs the packages if needed.
+
+packages <- c("tidyverse", "kableExtra", "psych", "janitor", "car", "performance", "see",
+              "gridExtra", "interactions", "devtools")
+
+if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
+  install.packages(setdiff(packages, rownames(installed.packages())))  
+}
+
+# you might not need all these packages for your analysis!
+library("tidyverse")
+library("papaja") # for pretty tables  
+library("kableExtra") # tables
+library("psych")  # for cronbach's alpha
+library("janitor")  #for frequency tables
+library("car")      #for regression assumption tests
+library("performance")
+library("see")
+library("gridExtra")    #these 3 are needed for a comprehensive model check with graphs
+library("report") #for regression summary 
+library("interactions")  # for interaction plot of continuous predictors
+library(dplyr) #for recode
+```
+
+```{r import data, include=FALSE}
+draftDat <- read.csv("~/Desktop/troyDat.csv")
+#didnt include race2 or gender2 because there were not enough responses.
+```
+
+```{r comparison data, include=FALSE}
+comparisonDat<- draftDat %>% select(1:65) #nice to have a comparison just to double check everything worked and easier than continuously pulling up excel
+comparisonDat
+```
+
+## cleaning (turning vectors into factors).
+#Did not code draftDat$gender2 because write in options and unsure if we will just leave as other. Did not code draftDat$race2; I actually removed the column from this specific dataset because there were no write in responses.
+```{r familyIncome as.factor, include=FALSE}
+draftDat$familyIncome<- as.factor(draftDat$familyIncome)
+
+draftDat$familyIncome<- factor(draftDat$familyIncome, levels = c("$10,000 or below", "$10,001-$20,000", "$20,001-$30,000", "$30,001-$40,000", "$40,001-$50,000", "$50,001-$60,000", "$60,001-$70,000", "$70,001-$80,000", "$80,001-$90,000", "$90,001-$100,000", "$100,001-$200,000", "Above $200,000"), labels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+
+draftDat$familyIncome
+```
+
+```{r employ as.factor, include=FALSE}
+draftDat$employmentStatus <- as.factor(draftDat$employmentStatus)
+
+draftDat$employmentStatus <- factor(draftDat$employmentStatus, levels = c("Currently unemployed", "Work study employee", "Part time employee", "Full time employee"), labels = c("1", "2", "3", "4"))
+
+draftDat$employmentStatus
+```
+
+```{r mapping for questionnaire, include=FALSE}
+library(plyr)
+#chatGPT helped with the code chunk below, it took some back and forth to figure it out.
+# Define mapping for each questionnaire
+cra_map <- c("1. Strongly disagree" = 1, "2" = 2, "3" = 3, "4. Neutral" = 4, "5" = 5, "6" = 6, "7. Strongly Agree" = 7)
+erq_map <- c("1. Strongly Disagree" = 1, "2" = 2, "3" = 3, "4" = 4, "5" = 5, "6" = 6, "7. Strongly Agree" = 7)
+ces_map <- c("Rarely or none of the time" = 1, "Some or a little of the time" = 2, "Occasionally or moderate amount of time" = 3, "Most or all of the time" = 4)
+pss_map <- c("Never" = 1, "Almost never" = 2, "Sometimes" = 3, "Fairly often" = 4, "Very Often" = 5)
+umn_map <- c("Strongly Disagree" = 1, "Disagree" = 2, "Neutral" = 3, "Agree" = 4, "Strongly Agree" = 5)
+
+# Define list of mappings
+mappings <- list(
+  CRA = cra_map,
+  ERQ = erq_map,
+  CES = ces_map,
+  PSS = pss_map,
+  UMN = umn_map
+)
+```
+
+```{r for loop, include=FALSE}
+# Loop through each prefix and apply recoding and conversion
+for (prefix in names(mappings)) {
+  columns <- grep(paste0("^", prefix), colnames(draftDat), value = TRUE)
+  for (col in columns) {
+    # Recode and convert to numeric
+    draftDat[[col]] <- mapvalues(draftDat[[col]], from = names(mappings[[prefix]]), to = mappings[[prefix]])
+    draftDat[[col]] <- as.numeric(ifelse(draftDat[[col]] == "NA", NA, draftDat[[col]]))
+  }
+}
+```
+
+# reverse scoring data
+##CES: second set of CES questions (1-15) Q4, 7, 10, 13 are reversed scored.
+##PSS: Q2, 3.
+##SSF: Q2, 3, 5, 6, 13.
+```{r CES, include=FALSE}
+draftDat$CESFeltGood<-recode(draftDat$CESFeltGood, "0=3; 1=2; 2=1; 3=0")
+draftDat$CESFeltGood
+
+draftDat$CESHopeful<- recode(draftDat$CESHopeful, "0=3; 1=2; 2=1; 3=0")
+draftDat$CESHopeful
+
+draftDat$CESHappy<- recode(draftDat$CESHappy, "0=3; 1=2; 2=1; 3=0")
+draftDat$CESHappy
+
+draftDat$CESEnjoyLife<- recode(draftDat$CESEnjoyLife, "0=3; 1=2; 2=1; 3=0")
+draftDat$CESEnjoyLife
+```
+
+```{r PSS, include=FALSE}
+draftDat$PSSConfidentAbility<- recode(draftDat$PSSConfidentAbility, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$PSSConfidentAbility
+
+draftDat$PSSGoingWay<-recode(draftDat$PSSGoingWay, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$PSSGoingWay
+```
+
+```{r UMN, include=FALSE}
+draftDat$UMNOutsider<- recode(draftDat$UMNOutsider, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$UMNOutsider
+
+draftDat$UMNUnderstandMore<- recode(draftDat$UMNUnderstandMore, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$UMNUnderstandMore 
+
+draftDat$UMNMystery<- recode(draftDat$UMNMystery, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$UMNMystery
+
+draftDat$UMNAlienated<- recode(draftDat$UMNAlienated, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$UMNAlienated
+
+draftDat$UMNProfessorLikeMe<- recode(draftDat$UMNProfessorLikeMe, "1=5; 2=4; 3=3; 4=2; 5=1")
+draftDat$UMNProfessorLikeMe 
+```
+
+```{r qDat, include=FALSE}
+qDat<- draftDat %>% select(1:30, 33:65) #made new dataset for the measures and covariates
+qDat
+```
+
+```{r remove 2nd CES, include=FALSE}
+qDat<- qDat[, -c(49:65)]
+qDat
+#there were so many NAs in the last set of questions- it was not working when running alpha and when I did na.omit it removed everything but 1 row. this is due to lack of responses on the second set of CES items. Removed the last 15 columns (2nd CES) for scored data too because our alphas are calculated with different data then. 
+#did this after realizing i would have to remove second CES questions but left the reverse scoring code for it. 
+```
+
+# scoring data. CRA=mean of 8 responses; ERQ=mean of 6 responses; CES=sum of 20 responses; PSS=mean of 4 items
+```{r scoredDat, include=FALSE}
+scoredDat<- qDat
+scoredDat
+```
+
+```{r scoring data, include=FALSE}
+scoredDat<- qDat %>% mutate(across(), CRA = rowMeans(select(., 5:12)), ERQ = rowMeans(select(., 13:18)), CES = rowSums(select(., 19:23)), PSS = rowMeans(select(., 24:27)), UMN = rowMeans(select(., 32:47))) %>% select(age, race, gender, familyIncome, CRA, ERQ, CES, PSS, parentEducationOne, parentEducationTwo, childhoodSocialClass, ladderRung, UMN)
+scoredDat
+```
+# Analysis
+
+From paper:  
+*__Analysis Strategy__ In all of our primary results reported below (as well as in Study 2 and 3), we examined the interactions between CRA and SES while statistically controlling for life stress by entering it as a predictor in the regressions. Before creating interaction terms for CRA and SES, all independent variables were mean centered. To examine our primary hypothesis, a multiple regression was conducted with depressive symptoms entered as the dependent variable and life stress, CRA, SES, and the interaction between CRA and SES entered as the independent variables. Correlations between all study variables are shown in Table 2. All primary results are shown in Table 3.*  
+
+**IVs**: *CRA, SES, PSS*;   
+**Covariates**: *ERQ, age, gender, race*;  
+**DV**: *CES-D*   
+
+
+Steps:  
+1. calculate descriptive statistics (mean, SD, range) and cronbach's alphas  
+ + plot family income distribution
+    calculate proportions of race and gender  
+2. mean center all IVs (*CRA, SES, PSS, ERQ, age*))   
+3. calculate regressions with and without covariates:  
+      CES-D ~ PSS + CRA + SES + CRA\*SES  
+      CES-D ~ PSS + CRA + SES + CRA\*SES + age  
+      CES-D ~ PSS + CRA + SES + CRA\*SES + gender  
+      CES-D ~ PSS + CRA + SES + CRA\*SES + race  
+      CES-D ~ PSS + CRA + SES + CRA\*SES + ERQ  
+      CES-D ~ CRA + SES + CRA\*SES  
+4. interpret regressions  
+   + check assumptions for linear regression  
+   + summarize regression outcomes  
+   + compare regressions
+5. correlate all variables  
+6. re-create interaction plot of CRA\*SES on CES-D (controlling for PSS!) from paper 
+-------------  
+
+
+### 1. Descriptives and alphas
+(use original (not scored) data for alphas!)  
+*alpha throws warnings because the fake data do not make much sense. You can ignore those when using the fake/simulated data, but pay attention to those when using real data!*  
+Here we calculate the descriptive statistics for the metric variables  
+```{r familyIncome as numeric, include=FALSE}
+scoredDat$familyIncome<- as.numeric(scoredDat$familyIncome) #made this a factor before.
+scoredDat$familyIncome
+```
+
+```{r descriptiveStats, include=FALSE}
+descriptiveStats <- scoredDat %>% 
+  summarise(age_mean = mean(age, na.rm = TRUE), age_sd = sd(age, na.rm = TRUE), age_min = min(age, na.rm = TRUE), age_max = max(age, na.rm = TRUE), 
+            familyIncome_mean = mean(familyIncome), familyIncome_sd = sd(familyIncome), familyIncome_min = min(familyIncome), familyIncome_max = max(familyIncome), 
+            CRA_mean = mean(CRA), CRA_sd = sd(CRA), CRA_min = min(CRA), CRA_max = max(CRA), 
+            ERQ_mean = mean(ERQ), ERQ_sd = sd(ERQ), ERQ_min = min(ERQ), ERQ_max = max(ERQ), 
+            CES_mean = mean(CES), CES_sd = sd(CES), CES_min = min(CES), CES_max = max(CES), 
+            PSS_mean = mean(PSS), PSS_sd = sd(PSS), PSS_min = min(PSS), PSS_max = max(PSS), 
+            ladderRung_mean = mean(ladderRung, na.rm = TRUE), ladderRung_sd = sd(ladderRung, na.rm = TRUE), ladderRung_min = min(ladderRung, na.rm = TRUE), ladderRung_max = max(ladderRung, na.rm = TRUE), 
+            UMN_mean = mean(UMN, na.rm = TRUE), UMN_sd = sd(UMN, na.rm = TRUE), UMN_min = min(UMN, na.rm = TRUE), UMN_max = max(UMN, na.rm = TRUE)) %>% pivot_longer(everything(), names_to = "name") %>% separate(name, into = c("name","descriptive"), sep = "_(?=[^_]+$)") %>%  pivot_wider(names_from = name, values_from = value)
+descriptiveStats
+```
+
+```{r question compute alpha, include=FALSE}
+alpha <- qDat %>% 
+  summarize(
+    CRAAlpha = select(., starts_with("CRA")) %>% 
+      psych::alpha() %>% 
+      pluck("total", "raw_alpha"),  
+    ERQAlpha = select(., starts_with("ERQ")) %>% 
+      psych::alpha() %>% 
+      pluck("total", "raw_alpha"), 
+    CESAlpha = select(., starts_with("CES")) %>% 
+      psych::alpha() %>%
+      pluck("total", "raw_alpha"),
+    PSSAlpha = select(., starts_with("PSS")) %>% 
+      psych::alpha() %>%
+      pluck("total", "raw_alpha"), 
+    UMNAlpha = select(., starts_with("UMN")) %>% 
+      psych::alpha() %>%  
+      pluck("total", "raw_alpha")
+  )
+alpha
+```
+
+```{r combine alpha values, include=FALSE}
+newRow<- (tibble(descriptive = "alpha", CRA = alpha$CRAAlpha, ERQ = alpha$ERQAlpha, PSS = alpha$PSSAlpha, CES = alpha$CESAlpha, UMN = alpha$UMNAlpha))
+newRow #making 'pretty' column names
+```
+
+```{r}
+descriptiveStats <- bind_rows(descriptiveStats, newRow) 
+descriptiveStats
+#chatGPT helped with bind rows.
+```
+
+```{r descriptive table, echo=FALSE}
+apa_table(descriptiveStats)
+```
+
+#### Plot the income distribution, and calculate the proportions of the different race and gender categories.    
+  
+Income categories:  
+1. $10,000 or below  
+2. $10,001 - $20,000  
+3. $20,001 - $30,000  
+4. $30,001 - $40,000  
+5. $40,001 - $50,000  
+6. $50,001 - $60,000  
+7. $60,001 - $70,000  
+8. $70,001 - $80,000  
+9. $80,001 - $90,000  
+10.$90,001 - $100,000  
+11.$100,001 - $200,000  
+12.Above $200,000  
+
+```{r familyIncome histogram, message = FALSE, warning=FALSE}
+# histogram of family income distribution
+income_plot<-hist(scoredDat$familyIncome,
+  main="Family income distribution",
+  xlab="family income category")
+```
+
+```{r frequencies, include=FALSE }
+# Proportions of race, gender, childhood social class, parental education, employment status, and student enrollment status. 
+#make separate frequency tables (janitor package)
+
+raceFreq<- scoredDat %>% tabyl(race)    
+raceFreq
+
+genderFreq<- scoredDat %>% tabyl(gender)
+genderFreq
+
+chiidhoodClassFreq<- scoredDat %>% tabyl(childhoodSocialClass)
+chiidhoodClassFreq
+
+parentEd1Freq<- scoredDat %>% tabyl(parentEducationOne)
+parentEd1Freq
+
+parentEd2Freq<- scoredDat %>% tabyl(parentEducationTwo)
+parentEd2Freq
+
+employmentStatusFreq<- draftDat %>% tabyl(employmentStatus)
+employmentStatusFreq
+
+studentSatusFreq<- draftDat %>% tabyl(studentSatus)
+studentSatusFreq
+```
+
+```{r combine frequencies, include=FALSE}
+#chatGPT helped combine all tables. when all combined in my original code, the variable names were repetitive.
+# Combine all frequency tables into a single data frame
+combinedFreq <- bind_rows(
+  raceFreq %>% mutate(variable = "Race"),
+  genderFreq %>% mutate(variable = "Gender"),
+  chiidhoodClassFreq %>% mutate(variable = "Childhood Social Class"),
+  parentEd1Freq %>% mutate(variable = "Parent Education One"),
+  parentEd2Freq %>% mutate(variable = "Parent Education Two"))
+combinedFreq
+#need to make so it is more organized. 
+```
+
+```{r frequencies table, include=FALSE}
+apa_table(combinedFreq, caption = "Proportions of  categories")
+#used include=F because it is disorganized. 
+```
+
+### 2. Mean center all IVs
+For regressions with interaction terms, we need to center the covariates, which means that we substract the mean from their values.
+```{r mean center , include=FALSE}
+#only mean centered, not scaled
+scoredDat2 <- scoredDat %>% 
+  mutate(CRACentered = scale(CRA, center = TRUE, scale = FALSE),     
+         SESFamCentered = scale(familyIncome, center = TRUE, scale = FALSE),
+         SESLadderCentered = scale(ladderRung, center = TRUE, scale = FALSE),
+         SESUMNCentered = scale(UMN, center = TRUE, scale = FALSE),
+         PSSCentered = scale(PSS, center = TRUE, scale = FALSE),
+         ERQCentered = scale(ERQ, center = TRUE, scale = FALSE),
+         ageCentered = scale(age, center = TRUE, scale = FALSE)) %>% select(age, race, gender, familyIncome, CRA, ERQ, CES, PSS, parentEducationOne, parentEducationTwo, childhoodSocialClass, ladderRung, UMN) 
+
+scoredDat2
+#save scored data in a new file if needed (change path!)
+#write_csv(scored_data, "scored_data_troy.csv")                     
+```
+```{r scoredDat3, include=FALSE}
+scoredDat3<- scoredDat2 %>% select(CES, PSS, CRA, ladderRung, UMN, familyIncome, parentEducationOne, parentEducationTwo, childhoodSocialClass) %>% mutate(SESCombinedCentered = (ladderRung + UMN + familyIncome) / 3)
+scoredDat3
+#created another dataset with mean centered variables. Additionally, combined our subjective SES measures for analyses. 
+```
+
+## data were missing for each of these so to do the analyses we had to remove the rows that were missing for the respective analyses due to our data exclusion requirements in our preregistration. 
+
+```{r, include=FALSE}
+scoredDatUMN<- scoredDat3[-c(22, 24, 33:34), ]
+scoredDatUMN
+```
+
+### 3. Calculate the regressions
+Now we model the multiple linear regression to determine the relationship between our variables and covariates.  
+We first only fit the models with the different predictors.  
+Then we check the assumptions of the main model of interest (first model, `fit`), then we look at the results of the first model and interpret the outcome  Finally, we compare the outcomes of the different models to see whether adding different covariates changes the results.   
+
+#### Fit the regression models:  
+```{r fit, include=FALSE}
+#  Firstly our main regression:
+# We enter CRA and SES individually and the interaction between both
+fit <- lm(CES ~ PSS + CRA + familyIncome + CRA:familyIncome, data = scoredDat2)
+fit
+```
+
+```{r fit2 ERQ, include=FALSE}
+# Now we include our covariates individually:
+#ERQ
+fit2 <- lm(CES ~ PSS + CRA + familyIncome + CRA:familyIncome +ERQ, data = scoredDat2)  
+fit2
+```
+
+```{r fit3 age, include=FALSE}
+#age
+fit3 <- lm(CES ~ PSS + CRA + familyIncome + CRA:familyIncome + age, data = scoredDat2)
+fit3
+```
+
+```{r fit4 gender, include=FALSE}
+#gender
+fit4 <- lm(CES ~ PSS + CRA + familyIncome + CRA:familyIncome + gender, data = scoredDat2)
+fit4
+```
+
+```{r fit5 race, include=FALSE}
+#race
+fit5 <- lm(CES ~ PSS + CRA + familyIncome + CRA:familyIncome + race, data = scoredDat2)
+fit5
+```
+
+```{r fit6 w/o PSS, include=FALSE}
+#They also modeled one regression without controlling for life stress (PSS):
+fit6<-lm(CES ~ CRA + familyIncome + CRA:familyIncome, data = scoredDat2)
+fit6
+```
+
+```{r fit7 parent+childhood, include=FALSE}
+#comparing parental education and childhood social class against original measure of SES before adding in our subjective measures of SES.
+fit7 <- lm(CES ~ PSS + CRA + familyIncome + CRA:familyIncome + parentEducationOne + parentEducationTwo + childhoodSocialClass, data = scoredDat2)
+fit7
+```
+
+```{r fit8 subjective SES, include=FALSE}
+fit8 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered, data = scoredDatUMN)
+fit8
+```
+
+# using original analyses method with all of the covariates but using our main IV (subjective SES).
+
+```{r fit9 SES+ERQ, include=FALSE}
+#fit9 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered + ERQ, data = scoredDatUMN)
+#fit9
+```
+
+```{r fit10 SES+age, include=FALSE}
+#fit10 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered + age, data = scoredDatUMN)
+#fit10
+```
+
+```{r fit11 SES+gender, include=FALSE}
+#fit11 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered + gender, data = scoredDatUMN)
+#fit11
+```
+
+```{r fit12 SES+race, include=FALSE}
+#fit12 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered + race, data = scoredDatUMN)
+#fit12
+```
+
+```{r fit13 SES+ parent and childhood, include=FALSE}
+#comparing parental education and childhood social class with our combined subjective measures of SES.
+fit13 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered + parentEducationOne + parentEducationTwo + childhoodSocialClass, data = scoredDatUMN)
+fit13
+```
+
+```{r fit14 SES w/o PSS, include=FALSE}
+#troy et al (2017) also modeled one regression without controlling for life stress (PSS), we did that also but with our combined SES. 
+fit14 <- lm(CES ~ PSS + CRA + SESCombinedCentered + CRA:SESCombinedCentered, data = scoredDatUMN)
+fit14
+```
+
+### 4. Interpret regressions
+
+#### Check the assumptions:  
+
+There are different ways to check the assumptions of regressions in R. 
+We suggest you use `check_model()` from the performance package.  
+
+*(If you want to, you can also try `plot(fit)` to go through different plots that visualize the assumptions.  
+If you want to the information on the individual predictors, you can use `residualPlots(fit)`.  
+Another important assumption to check is whether the predictors are correlated that you can also check with the variance inflation factors, using `vif(fit)`).*   
+```{r question check model, include=FALSE}
+# Comprehensive model check with the "performance" package 
+#This function makes similar checks as the base R plots, all nicely in one 
+#(check for multicollinearity, non-normality of residuals, 
+#homogeneity of variance (scale-location),  non-normality of residuals and outliers (QQ-plot), 
+#homoscedasticity (linear relationship), check for influential observations (Cook's distance)).
+#--> used vif to make sure it is good. 
+check_model(fit)
+check_model(fit8)
+```
+```{r vif, include=FALSE}
+vif(fit)
+vif(fit8)
+#both have outputs that are under a value of 4 and above .25 so there doesn't appear to be a significant issue with multicollinearity in either of the models. used main regression models for original analysis and extension analysis, respectively. 
+```
+
+
+#### summarize regression outcomes
+```{r summarize outcomes, echo=FALSE}
+# get the model summary:
+summary(fit) 
+
+#Generate a text report summarizing the results of our regression model.
+# (unfortunately not readable in the pdf - check out the html file or run the R-code)
+report(fit) #from "report" package                            
+
+# regression table in APA format
+apa_lm<-apa_print(fit)
+apa_lm
+apa_table(apa_lm$table, caption = "Regression table for main model")
+```
+
+
+```{r summarize extension outcomes, echo=FALSE}
+apaFit8<-apa_print(fit8)
+apaFit8
+apa_table(apaFit8$table, caption = "Regression table for extension model")
+```
+
+#### compare the different models
+From the results section, we understand the following:  
+The authors calculated a variety of models with different covariates (age, gender etc.). They simply looked at the model summaries to see whether the interaction SES\*CRA remained (marginally) significant. The model without life stress (PSS) as covariate led to a non-significant interaction between SES and CRA.  
+Here we simply list the model summaries and see whether the first five result in a significant interaction, whereas the sixth does not.  
+```{r compare models, include=FALSE}
+# significant interaction?
+summary(fit2)
+summary(fit3)
+summary(fit4)
+summary(fit5) 
+
+# non-significant interaction?
+summary(fit6)
+```
+```{r model reports, include=FALSE}
+report(fit2)
+report(fit3)
+report(fit4)
+report(fit5)
+report(fit6)
+```
+
+```{r compare/report extension models, include=FALSE}
+summary(fit8)
+report(fit8)
+
+summary(fit13)
+report(fit13)
+```
+
+It is possible to statistically compare two model fits - which hasn't been done in the paper. In case you want to do so, run this code:  
+```{r anova, include=FALSE}
+#anova(fit, fit8) #Error in anova.lmlist(object, ...) : models were not all fitted to the same size of dataset - fix if want to compare. 
+# replace fit_2 with fit_3 etc. - you always want to compare the models to the first model!
+```
+
+
+### 5. Correlation matrix
+For Pearson correlations, we need numeric data. The original authors  re-coded race (0 = white/Caucasian, 1 = non-white) and gender (1=male, 2=female), so that they can calculate their correlation matrix. We had different response options and in turn coded it differently. 
+```{r corrDat, include=FALSE}
+corrDat<- scoredDat %>% select(1:13)
+corrDat
+#creating new dataframe for correlations. 
+```
+
+```{r gender to factor, include=FALSE}
+corrDat$gender<- as.factor(corrDat$gender)
+corrDat$gender<- factor(corrDat$gender, levels = c("Cisgender Female", "Cisgender Male", "Transgender Female", "Transgender Male", "Other (Please specify)"), labels = c("1", "2", "3", "4", "5"))
+corrDat$gender
+#we had an option for "Do not wish to disclose" but not in the current data.
+```
+
+```{r race to factor, include=FALSE}
+corrDat$race<- as.factor(corrDat$race)
+
+corrDat$race<- factor(corrDat$race, levels = c("Asian", "Black or African-American", "Hispanic, Latino/Latina/Latinx, or Spanish origin", "Middle Eastern or Northern African", "White or European American"), labels = c("1", "2", "3", "4", "5"))
+corrDat$race
+
+#there was a response option of "Another race or ethnicity [please describe here]" which had the column race2. We did not add it in this data because this appeared as one response "Hispanic, Latino/Latina/Latinx, or Spanish origin,White or European American." We did not code this into the race analysis but did for the rest of the analyses as described in our exclusion data in our preregistration. 
+```
+
+```{r parentEd to factor, include=FALSE}
+corrDat$parentEducationOne<- as.factor(corrDat$parentEducationOne)
+corrDat$parentEducationTwo<- as.factor(corrDat$parentEducationTwo)
+
+corrDat$parentEducationOne<- factor(corrDat$parentEducationOne, levels = c("Less than high school", "High school or GED", "Some college", "Associate's degree", "Bachelor's degree", "Master's degree", "Doctorate (e.g. PhD, PsyD)", "Professional Degree (e.g. MD, JD)"), labels = c("1", "2", "3", "4", "5", "6", "7", "8"))
+corrDat$parentEducationOne
+
+corrDat$parentEducationTwo<- factor(corrDat$parentEducationTwo, levels = c("Less than high school", "High school or GED", "Some college", "Associate's degree", "Bachelor's degree", "Master's degree", "Doctorate (e.g. PhD, PsyD)", "Professional Degree (e.g. MD, JD)"), labels = c("1", "2", "3", "4", "5", "6", "7", "8"))
+corrDat$parentEducationTwo
+```
+
+```{r childhood to factor, include=FALSE}
+corrDat$childhoodSocialClass<- as.factor(corrDat$childhoodSocialClass)
+
+corrDat$childhoodSocialClass<- factor(corrDat$childhoodSocialClass, levels = c("Unsure/don't want to say", "Lower income or poor", "Working class", "Middle class", "Upper middle class", "Upper class"), labels = c("1", "2", "3", "4", "5", "6"))
+corrDat$childhoodSocialClass
+```
+
+```{r question remove NA , include=FALSE}
+corrDat <- na.omit(corrDat)
+corrDat
+#remove NA for converting to numeric. 
+#respondant 36 in this dataset put "Hispanic, Latino/Latina/Latinx, or Spanish origin,White or European American" and it did not separate into two columns when transferring data from qualtrics to cvs format.
+```
+
+```{r convert to numeric, include=FALSE}
+corrDat$childhoodSocialClass<- as.numeric(corrDat$childhoodSocialClass)
+corrDat$parentEducationOne<- as.numeric(corrDat$parentEducationOne)
+corrDat$parentEducationTwo<- as.numeric(corrDat$parentEducationTwo)
+corrDat$race<- as.numeric(corrDat$race)
+corrDat$gender<- as.numeric(corrDat$gender)
+```
+
+```{r corMatrix, include=FALSE}
+corMatrix<- cor(corrDat)
+corMatrix
+```
+
+```{r question as.dist, include=FALSE}
+cor_matrix <- as.dist(corMatrix) #only show the lower triangle of the matrix
+cor_matrix
+```
+
+### 6. Interaction plot
+To visualize the interaction between CRA and SES, we want to draw an interaction plot.  
+```{r SESFamCraInteraction, echo=FALSE}
+#SES is entered as a moderator of the relationship between CRA and CES-D.
+interaction_plot <- interactions::interact_plot(model = fit, 
+                                                pred = CRA, 
+                                                modx = familyIncome,
+                                                interval=TRUE, 
+                                                x.label = "CRA", 
+                                                y.label= "CES-D",
+                                                legend.main = "Family Income")
+interaction_plot
+```
+```{r SEScombined, echo=FALSE}
+#combined SES is entered as a moderator of the relationship between CRA and CES-D. 
+interactionPlot <- interactions::interact_plot(model = fit8, pred = CRA, modx = SESCombinedCentered, interval=TRUE, x.label = "CRA", y.label= "CES-D", legend.main = "Combined SES") + scale_y_continuous(breaks= seq(0, 15, by= 3))
+interactionPlot
+```
